@@ -1,3 +1,5 @@
+use ropey::Rope;
+use std::collections::HashMap;
 use std::sync::Mutex;
 
 use tower_lsp::jsonrpc::Result;
@@ -7,7 +9,10 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 #[derive(Debug)]
 struct Backend {
     client: Client,
-    publish_diagnostics_capable: Mutex<bool>
+
+    publish_diagnostics_capable: Mutex<bool>,
+
+    rope_map: Mutex<HashMap<String, Rope>>
 }
 
 fn create_simple_diagnostics(
@@ -32,9 +37,11 @@ impl Backend {
         Backend {
             client,
             publish_diagnostics_capable: Mutex::new(false),
+            rope_map: Mutex::new(HashMap::new())
         }
     }
-    pub async fn compile(&self, uri: Url, _src: &str) {
+    pub async fn compile(&self, uri: Url, src: &str) {
+        self.rope_map.lock().unwrap().insert(uri.to_string(), Rope::from_str(src));
         let diagnostics = vec![
             create_simple_diagnostics("diagnostic message 1".into(), 0, 0, 0, 5),
             create_simple_diagnostics("diagnostic message 2".into(), 1, 0, 1, 5),
