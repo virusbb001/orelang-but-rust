@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+
 use tower_lsp::jsonrpc::Result;
 use tower_lsp::lsp_types::*;
 use tower_lsp::{Client, LanguageServer, LspService, Server};
@@ -5,17 +7,57 @@ use tower_lsp::{Client, LanguageServer, LspService, Server};
 #[derive(Debug)]
 struct Backend {
     client: Client,
+    publish_diagnostics_capable: Mutex<bool>
+}
+
+fn create_simple_diagnostics(
+    message: String,
+    start_line: u32, start_column: u32,
+    end_line: u32, end_column: u32
+) -> Diagnostic {
+    Diagnostic::new_simple(Range {
+        start: Position {
+            line: start_line,
+            character: start_column,
+        },
+        end: Position {
+            line: end_line,
+            character: end_column,
+        },
+    }, message)
 }
 
 impl Backend {
-    pub async fn compile(&self, uri: &str, src: &str) {
-        self.client.log_message(MessageType::INFO, format!("{}:{}", uri, src)).await;
+    pub fn new (client: Client) -> Backend {
+        Backend {
+            client,
+            publish_diagnostics_capable: Mutex::new(false),
+        }
+    }
+    pub async fn compile(&self, uri: Url, _src: &str) {
+        let diagnostics = vec![
+            create_simple_diagnostics("diagnostic message 1".into(), 0, 0, 0, 5),
+            create_simple_diagnostics("diagnostic message 2".into(), 1, 0, 1, 5),
+        ];
+        self.send_publish_diagnostics(uri, diagnostics).await;
+    }
+
+    pub async fn send_publish_diagnostics(&self, uri: Url, diagnostics: Vec<Diagnostic>) {
+        if *(self.publish_diagnostics_capable.lock().unwrap()) {
+            self.client.publish_diagnostics(uri, diagnostics, None).await;
+        }
     }
 }
 
 #[tower_lsp::async_trait]
 impl LanguageServer for Backend {
-    async fn initialize(&self, _: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let publish_diagnostics_capable = params
+            .capabilities
+            .text_document
+            .map_or(false, |v| v.publish_diagnostics.is_some());
+        *self.publish_diagnostics_capable.lock().unwrap() = publish_diagnostics_capable;
+
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
                 text_document_sync: Some(TextDocumentSyncCapability::Kind(TextDocumentSyncKind::FULL)),
@@ -35,15 +77,20 @@ impl LanguageServer for Backend {
     async fn did_open(&self, params: DidOpenTextDocumentParams) {
         let uri = params.text_document.uri;
         let text = params.text_document.text;
-        self.compile(uri.as_ref(), &text).await;
+        self.compile(uri, &text).await;
     }
 
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         if let Some(content_change) = params.content_changes.last() {
             let uri = params.text_document.uri;
             let text = &content_change.text;
-            self.compile(uri.as_ref(), text).await;
+            self.compile(uri, text).await;
         }
+    }
+
+    async fn did_close (&self, params: DidCloseTextDocumentParams) {
+        let uri = params.text_document.uri;
+        self.send_publish_diagnostics(uri, vec![]).await;
     }
 }
 
@@ -52,6 +99,6 @@ async fn main() {
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
 
-    let (service, socket) = LspService::new(|client| Backend { client });
+    let (service, socket) = LspService::new(Backend::new);
     Server::new(stdin, stdout, socket).serve(service).await;
 }
