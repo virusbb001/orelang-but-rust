@@ -1,3 +1,4 @@
+mod parser;
 use ropey::Rope;
 use std::collections::HashMap;
 use std::sync::Mutex;
