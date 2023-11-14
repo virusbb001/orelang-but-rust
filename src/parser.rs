@@ -85,13 +85,14 @@ mod test {
     }
 }
 
+#[derive(Debug)]
 pub struct ImCompleteSemanticToken {
     pub start: usize,
     pub length: usize,
     pub token_type: SemanticTokenType,
 }
 
-fn parse(source: &str) -> Vec<ImCompleteSemanticToken> {
+pub fn parse(source: &str) -> Vec<ImCompleteSemanticToken> {
     let (tokens, _err) = lexer().parse_recovery(source);
 
     if let Some(tokens) = tokens {
