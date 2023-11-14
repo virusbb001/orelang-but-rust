@@ -32,6 +32,50 @@ pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
         .repeated()
 }
 
+#[derive(Debug)]
+pub struct ImCompleteSemanticToken {
+    pub start: usize,
+    pub length: usize,
+    pub token_type: SemanticTokenType,
+}
+
+#[derive(Debug)]
+pub struct ParseResult {
+    pub semantic_tokens: Vec<ImCompleteSemanticToken>
+}
+
+pub fn parse(source: &str) -> ParseResult {
+    let (tokens, _err) = lexer().parse_recovery(source);
+
+    let semantic_tokens = if let Some(tokens) = tokens {
+        tokens.iter().filter_map(|(token, span)| match token {
+            Token::LParen => None,
+            Token::RParen => None,
+            Token::Comment => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::COMMENT,
+            }),
+            Token::Number => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::NUMBER,
+            }),
+            Token::Ident => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::VARIABLE,
+            }),
+        }).collect()
+    } else {
+        vec![]
+    };
+
+    ParseResult {
+        semantic_tokens
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -82,40 +126,5 @@ mod test {
 
         LParen, Ident, LParen, Ident, Number, RParen, RParen, Comment
         ]);
-    }
-}
-
-#[derive(Debug)]
-pub struct ImCompleteSemanticToken {
-    pub start: usize,
-    pub length: usize,
-    pub token_type: SemanticTokenType,
-}
-
-pub fn parse(source: &str) -> Vec<ImCompleteSemanticToken> {
-    let (tokens, _err) = lexer().parse_recovery(source);
-
-    if let Some(tokens) = tokens {
-        tokens.iter().filter_map(|(token, span)| match token {
-            Token::LParen => None,
-            Token::RParen => None,
-            Token::Comment => Some(ImCompleteSemanticToken {
-                start: span.start,
-                length: span.len(),
-                token_type: SemanticTokenType::COMMENT,
-            }),
-            Token::Number => Some(ImCompleteSemanticToken {
-                start: span.start,
-                length: span.len(),
-                token_type: SemanticTokenType::NUMBER,
-            }),
-            Token::Ident => Some(ImCompleteSemanticToken {
-                start: span.start,
-                length: span.len(),
-                token_type: SemanticTokenType::VARIABLE,
-            }),
-        }).collect()
-    } else {
-        vec![]
     }
 }

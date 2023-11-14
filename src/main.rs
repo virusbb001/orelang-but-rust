@@ -59,7 +59,7 @@ impl Backend {
             .unwrap()
             .insert(uri.to_string(), Rope::from_str(src));
 
-        let semantic_tokens = parse(src);
+        let semantic_tokens = parse(src).semantic_tokens;
 
         self.semantic_token_map
             .lock()
