@@ -1,3 +1,4 @@
+use tower_lsp::lsp_types::SemanticTokenType;
 use chumsky::prelude::*;
 use chumsky::Parser;
 
@@ -81,5 +82,39 @@ mod test {
 
         LParen, Ident, LParen, Ident, Number, RParen, RParen, Comment
         ]);
+    }
+}
+
+pub struct ImCompleteSemanticToken {
+    pub start: usize,
+    pub length: usize,
+    pub token_type: SemanticTokenType,
+}
+
+fn parse(source: &str) -> Vec<ImCompleteSemanticToken> {
+    let (tokens, _err) = lexer().parse_recovery(source);
+
+    if let Some(tokens) = tokens {
+        tokens.iter().filter_map(|(token, span)| match token {
+            Token::LParen => None,
+            Token::RParen => None,
+            Token::Comment => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::COMMENT,
+            }),
+            Token::Number => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::NUMBER,
+            }),
+            Token::Ident => Some(ImCompleteSemanticToken {
+                start: span.start,
+                length: span.len(),
+                token_type: SemanticTokenType::VARIABLE,
+            }),
+        }).collect()
+    } else {
+        vec![]
     }
 }
