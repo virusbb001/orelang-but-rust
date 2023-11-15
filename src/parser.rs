@@ -10,8 +10,8 @@ pub enum Token {
     LParen,
     RParen,
     Comment,
-    Number,
-    Ident,
+    Number(String),
+    Ident(String),
 }
 
 pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
@@ -23,11 +23,14 @@ pub fn lexer() -> impl Parser<char, Vec<(Token, Span)>, Error = Simple<char>> {
         .padded()
         .map(|_| Token::Comment);
 
-    let number = text::int(10).map(|_| Token::Number);
+    let number = text::int(10)
+        .chain::<char, _, _>(just('.').chain(text::digits(10)).or_not().flatten())
+        .collect::<String>()
+        .map(Token::Number);
 
     let ident = text::ident()
         .or(one_of("+-*/=").map(|c: char| c.to_string()))
-        .map(|_| Token::Ident);
+        .map(Token::Ident);
 
     let token = lparen.or(rparen).or(comment).or(number).or(ident);
 
@@ -64,12 +67,12 @@ pub fn parse(source: &str) -> ParseResult {
                     length: span.len(),
                     token_type: SemanticTokenType::COMMENT,
                 }),
-                Token::Number => Some(ImCompleteSemanticToken {
+                Token::Number(_) => Some(ImCompleteSemanticToken {
                     start: span.start,
                     length: span.len(),
                     token_type: SemanticTokenType::NUMBER,
                 }),
-                Token::Ident => Some(ImCompleteSemanticToken {
+                Token::Ident(_) => Some(ImCompleteSemanticToken {
                     start: span.start,
                     length: span.len(),
                     token_type: SemanticTokenType::VARIABLE,
@@ -80,7 +83,10 @@ pub fn parse(source: &str) -> ParseResult {
         vec![]
     };
 
-    let parse_errors = errs.into_iter().map(|e| e.map(|c| c.to_string())).collect::<Vec<_>>();
+    let parse_errors = errs
+        .into_iter()
+        .map(|e| e.map(|c| c.to_string()))
+        .collect::<Vec<_>>();
 
     ParseResult {
         semantic_tokens,
@@ -113,11 +119,11 @@ mod test {
 
         let result = lexer().parse("12345").unwrap();
         let tokens: Vec<_> = result.into_iter().map(|v| v.0).collect();
-        assert_eq!(tokens, vec![Token::Number]);
+        assert_eq!(tokens, vec![Token::Number("12345".into())]);
 
         let result = lexer().parse("abc").unwrap();
         let tokens: Vec<_> = result.into_iter().map(|v| v.0).collect();
-        assert_eq!(tokens, vec![Token::Ident]);
+        assert_eq!(tokens, vec![Token::Ident("abc".into())]);
 
         let result = lexer()
             .parse(
@@ -136,10 +142,43 @@ mod test {
         assert_eq!(
             tokens,
             vec![
-                Comment, LParen, Ident, Ident, LParen, Ident, RParen, LParen, Ident, LParen, Ident,
-                Ident, Number, RParen, Number, LParen, Ident, Ident, LParen, Ident, LParen, Ident,
-                Ident, Number, RParen, RParen, RParen, RParen, RParen, LParen, Ident, LParen,
-                Ident, Number, RParen, RParen, Comment
+                Comment,
+                LParen,
+                Ident("defun".into()),
+                Ident("fact".into()),
+                LParen,
+                Ident("n".into()),
+                RParen,
+                LParen,
+                Ident("if".into()),
+                LParen,
+                Ident("=".into()),
+                Ident("n".into()),
+                Number("0".into()),
+                RParen,
+                Number("1".into()),
+                LParen,
+                Ident("*".into()),
+                Ident("n".into()),
+                LParen,
+                Ident("fact".into()),
+                LParen,
+                Ident("-".into()),
+                Ident("n".into()),
+                Number("1".into()),
+                RParen,
+                RParen,
+                RParen,
+                RParen,
+                RParen,
+                LParen,
+                Ident("print".into()),
+                LParen,
+                Ident("fact".into()),
+                Number("5".into()),
+                RParen,
+                RParen,
+                Comment
             ]
         );
     }
